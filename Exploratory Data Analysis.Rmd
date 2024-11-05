@@ -1,0 +1,398 @@
+---
+title: 'DSApps 2023 @ TAU: Final Project'
+author: "Sofia Prahia- 314710567, Noa Shaya – 318455961"
+date: "`r Sys.Date()`"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+subtitle: Prediction
+---
+
+```{r, echo=FALSE, fig.align='center'}
+#knitr::include_graphics("images/DSApps_logo_small.jpg")
+```
+INSTALL REQUIRED PACKAGES
+```{r, message=FALSE, warning=FALSE, error=FALSE}
+if (!require("tidyverse")) {install.packages("tidyverse") }
+library(tidyverse)
+if (!require("ggplot2")) { install.packages("ggplot2") }
+library(ggplot2)
+if (!require("stringr")) { install.packages("stringr") }
+library(stringr)
+if (!require("tidytext")) { install.packages("tidytext") }
+library(tidytext)
+if (!require("purrr")) { install.packages("purrr") }
+library(purrr)
+if (!require("dplyr")) { install.packages("dplyr") }
+library(dplyr)
+if (!require("tidyr")) { install.packages("tidyr") }
+library(tidyr)
+if (!require("tidymodels")) { install.packages("tidymodels") }
+library(tidymodels)
+if (!require("naniar")) { install.packages("naniar") }
+library(naniar)
+if (!require("jpeg")) { install.packages("jpeg") }
+library(jpeg)
+if (!require("purrr")) { install.packages("purrr") }
+library(purrr)
+if (!require("jpeg")) { install.packages("jpeg") }
+library(jpeg)
+if (!require("dplyr")) { install.packages("dplyr") }
+library(dplyr)
+if (!require("tidyr")) { install.packages("tidyr") }
+library(tidyr)
+if (!require("ggplot2")) { install.packages("ggplot2") }
+library(ggplot2)
+```
+
+LOAD THE DATA BASES
+```{r, message=FALSE, warning=FALSE, error=FALSE}
+food_train <- read_csv("data/food_train.csv")
+food_test <- read_csv("data/food_test.csv")
+nutrients <- read_csv("data/nutrients.csv")
+food_nutrients <- read_csv("data/food_nutrients.csv")
+```
+
+LETS EXPLORE THE DATA ! 
+
+In this section, we will thoroughly analyze each column, investigating their individual characteristics and presenting thought-provoking questions. 
+
+First, let's catch a glimpse of how the data is structured.
+```{r}
+head(food_train, 3)
+dim (food_train)
+head(nutrients, 3)
+dim(nutrients)
+head(food_nutrients,3 )
+dim(food_nutrients)
+```
+
+NUTRIENT DISTRIBUTION:
+Q1. Which nutrients are most commonly found in snacks? 
+```{r,  message=FALSE, warning=FALSE, error=FALSE}
+
+nutrients_combine <- food_nutrients %>% 
+  left_join(nutrients, by="nutrient_id") 
+
+nutrients_count <- nutrients_combine%>%
+  group_by(nutrient_id, name) %>%
+  mutate(count = n()) %>%
+  select(nutrient_id, name, count) %>%
+  distinct()
+
+nutrients_count %>%
+  filter(count > 500) %>% #We filter out nutrients with low occurrence
+  arrange(desc(count)) %>%
+  ggplot(aes(x = reorder(name, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "blue4", alpha=0.6, width = 0.8) +
+  xlab("Nutrient") +
+  ylab("Count") +
+  ggtitle("Count of Nutrients in Snacks") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, family = "mono", size = 7, color = "black"), panel.background = element_rect(fill = "white"))
+```
+
+Q2: What are the top 14 nutrients that are most commonly found in snacks:
+```{r}
+nutrients_count %>%
+  filter(count > 500) %>% 
+  arrange(desc(count)) %>%
+  head(14)
+```
+Let's determine the categories they are associated with by utilizing the training data.
+
+Q3: Are there any nutrients that are present in only a few snacks? if so lets check if they are related to a specific category
+```{r}
+few_snacks <- nutrients_count %>% filter(count < 200)
+
+few_snacks_data <- nutrients_combine %>%
+  filter(nutrient_id %in% few_snacks$nutrient_id)
+
+few_snacks_data %>%
+  left_join(food_train, by = "idx")  %>%
+  group_by(category) %>%
+  select(category) %>%
+  summarize(count = n()) %>%
+  distinct()%>%
+  arrange(desc(count))
+```
+We can see that most of the nutrients that are present in only a few snacks are related to chips_pretzels_snacks/popcorn_peanuts_seeds_related_snacks categories => meaning to the salty snacks.
+
+Q4: Are there any specific categories that tend to have higher or lower levels of certain nutrients?
+```{r}
+merged_food_data <- food_nutrients %>%
+  left_join(nutrients, by = "nutrient_id") %>%
+  inner_join(food_train, by = "idx")
+
+nutrient_stats <- merged_food_data %>%
+  group_by(category, name) %>%
+  summarize(mean_amount = mean(amount))
+
+
+#We will group nutrients that are similar or belong to the same nutrient group because there are a lot of nutrients. Then, we will filter only those nutrients with a mean amount greater than 180:
+
+nutrient_stats <- nutrient_stats %>%
+  mutate(name = ifelse(str_starts(name, "Fatty acids"), "Fatty acids", ifelse(str_starts(name, "Carbohydrate"), "Carbohydrate", ifelse(str_starts(name, "Fiber"),"Fiber", name)))) %>% 
+  filter(mean_amount>=180)
+
+options(repr.plot.width = 150, repr.plot.height = 50)
+
+ggplot(nutrient_stats, aes(x = category, y = mean_amount, fill = name)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  xlab("Category") +
+  ylab("Mean Nutrient Amount") +
+  ggtitle("Nutrient Composition of Snacks by Category") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  theme_minimal() +
+  coord_flip()
+```
+We observed that Folate is more commonly found in the Candy and Cakes, Cupcakes, Snack Cakes categories. The Cakes, Cupcakes, Snack Cakes categories also contain a significant amount of Vitamin K. In the Candy category, there is a high concentration of Folic Acid. The Chips, Pretzels & Snacks category stands out with substantial amounts of Potassium, Sodium, and Vitamin A. The energy content across all categories ranges from around 400 to 500. Additionally, the Cookies & Biscuits and Popcorn, Peanuts, Seeds & Related Snacks categories contain approximately 400 units of Potassium and Phosphorus.
+
+BRANDS:
+Q1: what are the 10 top brands:
+```{r,  message=FALSE, warning=FALSE, error=FALSE}
+food_train %>%
+  group_by(brand) %>%
+  summarize(count = n()) %>%
+  select(brand, count) %>%
+  distinct() %>%
+  arrange(desc(count)) %>%
+  head(10)
+```
+
+Q2: What is the number of different categories that are common for a brand?
+
+The plan is to analyze how many distinct categories each brand has and visualize the frequency of occurrence for each number of categories. This will provide insights into the commonality of category diversity among brands.
+```{r}
+brand_category_counts <- food_train %>%
+  group_by(brand) %>%
+  summarize(num_categories = n_distinct(category))
+
+category_frequency <- brand_category_counts %>%
+  count(num_categories)
+
+
+ggplot(category_frequency, aes(x = as.factor(num_categories), y = n)) +
+  geom_bar(stat = "identity", fill =  "lightblue", width = 0.7) +
+  xlab("Number of Categories") +
+  ylab("Frequency") +
+  ggtitle("Frequency of Number of Categories per Brand") +
+  theme_minimal() +
+  scale_x_discrete(labels = as.character(category_frequency$num_categories))
+```
+We can observe that the majority of brands are associated with only one of the six categories. This suggests that the brand column could be helpful in predicting the category to which a product belongs. By leveraging the brand information, we can enhance our prediction accuracy and effectively classify products into their respective categories.
+
+However, it is important to note that the database contain a wide variety of brands.
+
+Q3: what is the number of brands in the train set? :
+```{r}
+#number of brands in the train set:
+food_train %>%
+  distinct(brand) %>%
+  n_distinct()
+#The data reveals a wide variety of brands, suggesting that the diversity within the brand information could potentially offer valuable insights for our analysis.
+```
+
+Q4: Which brand dominates each category?
+```{r}
+brand_category_counts <- food_train %>%
+  group_by(category, brand) %>%
+  summarize(count = n()) %>%
+  ungroup()
+
+#Now, let's identify the dominant brand for each category
+brand_category_counts %>%
+  group_by(category) %>%
+  filter(count == max(count)) 
+```
+
+INGREDIENT ANALYSIS:
+Q1: What are the most common ingredients found in snacks?
+```{r,  message=FALSE, warning=FALSE, error=FALSE}
+ingredient_counts <- food_train %>%
+  mutate(ingredients = strsplit(ingredients, ", ")) %>%
+  unnest(ingredients) %>%
+  group_by(ingredients) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+
+#Top 10 most common ingredients in snacks, along with their counts:
+ingredient_counts %>%
+  head(10)
+```
+
+Q2: What are the top 5 ingredients for each category?
+```{r}
+food_train %>%
+  mutate(ingredients = strsplit(ingredients, ", ")) %>%
+  unnest(ingredients) %>%
+  group_by(category, ingredients) %>%
+  select(category, ingredients) %>%
+  summarize(count = n()) %>%
+  distinct() %>%
+  arrange(desc(count)) %>%
+  slice_head(n = 5)
+```
+
+SERVING SIZE:
+Q1:  Are there any notable differences in serving sizes between categories? 
+```{r,  message=FALSE, warning=FALSE, error=FALSE}
+# Calculate the median serving size for each category
+category_serving_sizes <- food_train %>%
+  group_by(category) %>%
+  summarize(median_serving_size = median(serving_size))
+
+# Create a boxplot to compare serving sizes across categories
+ggplot(food_train, aes(x = category, y = serving_size)) +
+  geom_boxplot(fill = "steelblue", color = "black", outlier.shape = NA) +
+  xlab("Category") +
+  ylab("Serving Size") +
+  ggtitle("Comparison of Serving Sizes across Categories") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_cartesian(ylim = c(0, 170)) +
+  theme_minimal()+
+  coord_flip() 
+
+#A plot to compare median serving sizes across categories
+ggplot(category_serving_sizes, aes(x = category, y = median_serving_size)) +
+  geom_bar(stat = "identity", fill = "blue4", alpha = 0.8) +
+  xlab("Category") +
+  ylab("Median Serving Size") +
+  ggtitle("Median Serving Sizes across Categories") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_minimal() +
+  coord_flip()
+
+```
+We can infer that the serving size for the Cakes, Cupcakes, Snack Cakes category is notably larger, with an average of around 70. In contrast, the serving sizes of the other categories have a median range of 30 to 40, indicating comparatively smaller portion sizes. Moreover by looking at the boxplot, we can see that the serving size range for Chips, Pretzels & Snacks, Cookies & Biscuits, and Popcorn, Peanuts, Seeds & Related Snacks is very narrow. This suggests that products within these categories generally have consistent serving sizes, providing a predictable portion for consumers.
+
+DESCRIPTION:
+Q1. What is the distribution of the number of words in the description column?
+```{r,  message=FALSE, warning=FALSE, error=FALSE}
+# Calculate the number of words in the description column
+word_count <- food_train %>% mutate(words = str_count(description, "\\S+")) 
+
+word_count%>%
+  ggplot(aes(x = word_count$words)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
+  labs(x = "Number of Words", y = "Count") +
+  ggtitle("Distribution of Number of Words in Description Column") +
+  scale_x_continuous(breaks = seq(min(word_count$words), max(word_count$words), 1)) +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1, size = 8)) +
+  theme_minimal()
+```
+We observe that the majority of products have descriptions containing approximately 2-6 words and the mean is around 4-5.This information could be useful in the future if we choose to rearrange the description column and use it to our prediction (as we will do later)
+
+Q2: most common words used across snacks
+```{r}
+# Tokenize the description column into individual words
+word_freq_top_20 <- food_train %>%
+  mutate(description = str_to_lower(description)) %>%
+  unnest_tokens(word, description, token = "words") %>%
+  count(word, sort = TRUE) %>%
+  head(20)
+
+ggplot(word_freq_top_20, aes(x = reorder(word, n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8,  width = 0.8) +
+  labs(x = "Word", y = "Frequency", title = paste("Top", 20, "Most Common Words in Descriptions")) +
+  theme(axis.text.x = element_text(angle = 45,  size=5)) +
+  theme_minimal() +
+  coord_flip()
+```
+
+IMAGE ANALYSIS
+Q1: What is the most common color in each category? 
+```{r}
+#We will calculate the average RGB in each category. 
+get_rgb <- function(path_image){
+  bytes <- readBin(path_image, "raw", n = 2)
+  if (identical(bytes, as.raw(c(0xFF, 0xD8)))){
+    image <- readJPEG(path_image)
+    avg_red <- mean(image[,,1])
+    avg_green <- mean(image[,,2])
+    avg_blue <- mean(image[,,3])
+    return (c(avg_red, avg_green,avg_blue ))
+  }
+}
+class_paths <- c(
+  cakes_cupcakes_snack_cakes = "C:/Users/noash/OneDrive/project/data/images_final/train/cakes_cupcakes_snack_cakes",
+  candy = "C:/Users/noash/OneDrive/project/data/images_final/train/candy",
+  chips_pretzels_snacks = "C:/Users/noash/OneDrive/project/data/images_final/train/chips_pretzels_snacks",
+  chocolate = "C:/Users/noash/OneDrive/project/data/images_final/train/chocolate",
+  cookies_biscuits = "C:/Users/noash/OneDrive/project/data/images_final/train/cookies_biscuits",
+  popcorn_peanuts_seeds_related_snacks = "C:/Users/noash/OneDrive/project/data/images_final/train/popcorn_peanuts_seeds_related_snacks"
+)
+
+get_avg_rgb <- function(file_path){
+  image_files <- list.files(file_path, pattern = ".jpg", full.names = TRUE)
+  avg_rgbs_image_files <- lapply(image_files, get_rgb)
+  overall_avg_rgb <- colMeans(do.call(rbind, avg_rgbs_image_files))
+  return (overall_avg_rgb)
+}
+result_list <- map(class_paths, get_avg_rgb)
+
+result_df <- data.frame(
+  Category = names(class_paths),
+  do.call(rbind, result_list)
+)
+
+new_column_names <- c("Category","Red", "Blue", "Green")
+colnames(result_df) <- new_column_names
+result_df <- result_df %>% select (Red, Blue, Green)
+print(result_df*255)
+```
+
+Q2: analyze and visualize the distribution of image sizes within different categories of items
+```{r}
+process_folder <- function(folder_path) {
+  image_paths <- list.files(folder_path, full.names = TRUE)
+  
+  image_data <- lapply(image_paths, function(image_path) {
+    tryCatch({
+      img <- readJPEG(image_path)
+      dimensions <- dim(img)[1:2]
+      return(data.frame(path = image_path, width = dimensions[1], height = dimensions[2]))
+    }, error = function(e) {
+      return(NULL)
+    })
+  }) %>%
+    bind_rows()
+  
+  image_data <- image_data[!is.na(image_data$path), ]
+  
+  return(image_data)
+}
+
+all_image_data <- lapply(class_paths, process_folder)
+
+combined_image_data <- bind_rows(all_image_data, .id = "Category")
+
+ggplot(combined_image_data, aes(x = width)) +
+  geom_histogram(binwidth = 50, fill = "lightblue", color = "black") +
+  labs(title = "Image Width Distribution", x = "Image Width", y = "Frequency") +
+  facet_wrap(~Category, ncol = 2)
+
+ggplot(combined_image_data, aes(x = height)) +
+  geom_histogram(binwidth = 50, fill = "lightblue", color = "black") +
+  labs(title = "Image Height Distribution", x = "Image Height", y = "Frequency") +
+  facet_wrap(~Category, ncol = 2)
+
+summary(combined_image_data)
+```
+
+SUMMARY
+
+At the beginning, we explored the data. We wanted to know the dimension of the data bases, what kinds of information it held (numeric or text), the distribution of each column values, and the characteristics of the columns.
+
+Nutrients: We aimed to understand the popular nutrients and the categories they are associated with.
+
+Brands: Our focus was on determining the count of distinct brands and identifying the dominant brand within each category. Additionally, we examined the relationship between each brand and its connection to one or more categories. Interestingly, our findings revealed that the majority of brands (approximately 80%) are associated with just one category. Consequently, leveraging brand-related information to predict the category appears to be a sensible approach.
+
+Ingredients: We examined the common ones to see if they might indicate a specific category.
+
+Serving Size: The serving size could indicate the type of snack. We observed significant differences in serving sizes among certain categories. For instance, "cakes_cupcakes_snack_cakes" notably has a larger serving size compared to other categories.
+
+Description: We've recognized the importance of the description column. It contains important keywords that assist the model in predicting the category accurately.
+
+Image processing: We wanted to explore the colors in the images and see what is the most common color in each category. We also checked the image sizes within different categories of items.
