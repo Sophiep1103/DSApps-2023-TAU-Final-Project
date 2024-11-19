@@ -7,11 +7,3 @@ Developed in 2023
 Machine Learning Classification University Project
 Focus: Snack Categorization
 
-Key Features
-
-Data preprocessing
-Advanced feature engineering
-Handling missing values
-Brand and ingredient analysis
-Multi-category classification
-
